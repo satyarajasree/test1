@@ -17,6 +17,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
+
 
 @RestController
 @RequestMapping("/crm/employee")
@@ -34,59 +36,61 @@ public class BankController {
     @Autowired
     private JwtService jwtUtils;
 
-    @PutMapping("/update-images/{id}")
-    public ResponseEntity<CrmEmployee> editCrmEmployeeProfile(
-            @PathVariable int id,
-            @RequestParam(value = "profileImagePath", required = false) MultipartFile profileImage,
-            @RequestParam(value = "idCardPath", required = false) MultipartFile idCard,
-            HttpServletRequest request
-    ) {
-        try {
-            // Define S3 subdirectory and file names only if the files are present
-            String profileImagePath = null;
-            String idCardPath = null;
+   @PutMapping("/update-images/{id}")
+public ResponseEntity<CrmEmployee> editCrmEmployeeProfile(
+        @PathVariable int id,
+        @RequestParam(value = "profileImagePath", required = false) MultipartFile profileImage,
+        @RequestParam(value = "idCardPath", required = false) MultipartFile idCard,
+        HttpServletRequest request
+) {
+    try {
+        // Define S3 subdirectory and file names only if the files are present
+        String profileImagePath = null;
+        String idCardPath = null;
 
-            // Check if profile image is provided
-            if (profileImage != null && !profileImage.isEmpty()) {
-                String profileImageKey = "updated-profile-images/" + profileImage.getOriginalFilename();
-                profileImagePath = s3FileUploadService.uploadFile("employees", profileImage, profileImageKey);
-            }
-
-            // Check if ID card image is provided
-            if (idCard != null && !idCard.isEmpty()) {
-                String idCardKey = "updated-id-cards/" + idCard.getOriginalFilename();
-                idCardPath = s3FileUploadService.uploadFile("employees", idCard, idCardKey);
-            }
-
-            // Create DTO for updating employee profile
-            CrmEmployeeProfileDto crmEmployeeProfileDto = new CrmEmployeeProfileDto();
-            if (profileImagePath != null) {
-                crmEmployeeProfileDto.setProfileImagePath(profileImagePath);
-            }
-            if (idCardPath != null) {
-                crmEmployeeProfileDto.setIdCardPath(idCardPath);
-            }
-
-            // Update employee in the database
-            CrmEmployee updatedEmployee = bankService.updateCrmProfile(id, crmEmployeeProfileDto);
-            // Log the activity (optional)
-            String authorizationHeader = request.getHeader("Authorization");
-            if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-                throw new RuntimeException("JWT Token is missing or invalid");
-            }
-
-            String token = authorizationHeader.substring(7);
-            String mobileNumber = jwtUtils.extractUsername(token); // Extract mobile number from the token
-
-            mobileApplogsService.logActivity(request.getRequestURI(), request.getMethod(), mobileNumber, "You have updated your documents " + LocalDateTime.now());
-
-
-            return ResponseEntity.ok(updatedEmployee);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        // Check if profile image is provided
+        if (profileImage != null && !profileImage.isEmpty()) {
+            // Generate a unique file name using UUID and original file extension
+            String profileImageKey = "updated-profile-images/" + UUID.randomUUID().toString() + "-" + profileImage.getOriginalFilename();
+            profileImagePath = s3FileUploadService.uploadFile("employees", profileImage, profileImageKey);
         }
+
+        // Check if ID card image is provided
+        if (idCard != null && !idCard.isEmpty()) {
+            // Generate a unique file name using UUID and original file extension
+            String idCardKey = "updated-id-cards/" + UUID.randomUUID().toString() + "-" + idCard.getOriginalFilename();
+            idCardPath = s3FileUploadService.uploadFile("employees", idCard, idCardKey);
+        }
+
+        // Create DTO for updating employee profile
+        CrmEmployeeProfileDto crmEmployeeProfileDto = new CrmEmployeeProfileDto();
+        if (profileImagePath != null) {
+            crmEmployeeProfileDto.setProfileImagePath(profileImagePath);
+        }
+        if (idCardPath != null) {
+            crmEmployeeProfileDto.setIdCardPath(idCardPath);
+        }
+
+        // Update employee in the database
+        CrmEmployee updatedEmployee = bankService.updateCrmProfile(id, crmEmployeeProfileDto);
+
+        // Log the activity (optional)
+        String authorizationHeader = request.getHeader("Authorization");
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("JWT Token is missing or invalid");
+        }
+
+        String token = authorizationHeader.substring(7);
+        String mobileNumber = jwtUtils.extractUsername(token); // Extract mobile number from the token
+
+        mobileApplogsService.logActivity(request.getRequestURI(), request.getMethod(), mobileNumber, "You have updated your documents " + LocalDateTime.now());
+
+        return ResponseEntity.ok(updatedEmployee);
+    } catch (Exception e) {
+        e.printStackTrace();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
     }
+}
 
     @GetMapping("/get-employee/{id}")
     public ResponseEntity<CrmEmployee> getEmployeeById(@PathVariable int id) {
